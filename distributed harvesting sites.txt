@@ -1,0 +1,110 @@
+import arcpy
+import numpy
+import math
+
+class Toolbox(object):
+    def __init__(self):
+        """Define the toolbox (the name of the toolbox is the name of the .pyt file)."""
+        self.label = "Distributed Harvesting sites"
+        self.alias = "Sites"
+
+        # List of tool classes associated with this toolbox
+        self.tools = [DistHarvestingSites]
+
+
+class DistHarvestingSites(object):
+    def __init__(self):
+        """Define the tool (tool name is the name of the class)."""
+        self.label = "Distributed Harvesting sites"
+        self.description = ""
+        self.canRunInBackground = True
+
+    def getParameterInfo(self):
+#DEM
+        in_raster1 = arcpy.Parameter(
+	displayName = "Input DEM",
+	name = "in_raster1",
+	datatype = "Raster Layer",
+	parameterType = "Required",
+	direction = "Input")
+
+#Minimum Area of basin in meters square
+        in_area = arcpy.Parameter(
+	displayName = "Input area to be considered for every harvesting site in meters square",
+	name = "in_area",
+	datatype = "long",
+	parameterType = "Required",
+	direction = "Input")
+
+#Temporary parameter
+	temp_feature = arcpy.Parameter(
+	displayName = "Temporary Feature Class",
+	name = "temp_feature",
+	datatype = "Feature Layer",
+	parameterType = "Derived",
+	direction = "Input")
+
+#Output parameter
+	out_feature = arcpy.Parameter(
+	displayName = "Output Feature Class",
+	name = "out_feature",
+	datatype = "Feature Layer",
+	parameterType = "Required",
+	direction = "Output")
+	
+	params = [in_raster1, in_area, temp_feature, out_feature]
+    	return params
+
+    def isLicensed(self):
+        """Set whether tool is licensed to execute."""
+        return True
+
+    def updateParameters(self, parameters):
+        """Modify the values and properties of parameters before internal
+        validation is performed.  This method is called whenever a parameter
+        has been changed."""
+        return
+
+    def updateMessages(self, parameters):
+        """Modify the messages created by internal validation for each tool
+        parameter.  This method is called after internal validation."""
+        return
+
+    def execute(self, parameters, messages):
+        
+	in_raster1=parameters[0].ValueAsText
+	in_area=int(parameters[1].ValueAsText)
+	a = in_area
+	temp_feature = parameters[2].ValueAsText
+	out_feature = parameters[3].ValueAsText
+
+	inRas1 = arcpy.Raster(in_raster1)
+	
+	dsc = arcpy.Describe(inRas1)
+	sr = dsc.SpatialReference
+	pixels = a/(dsc.meanCellHeight * dsc.meanCellWidth)
+	fill = arcpy.sa.Fill(inRas1)
+	flow = arcpy.sa.FlowDirection(fill)
+	#bsn = arcpy.sa.Basin(flow)
+	acc = arcpy.sa.FlowAccumulation(flow)
+	maxacc = int(str(arcpy.GetRasterProperties_management(acc, "MAXIMUM")))
+	accn = arcpy.sa.Con((acc > pixels) & (acc < (2*pixels)),1)
+	lines = arcpy.RasterToPolyline_conversion(accn)
+	tixels = (2*pixels) + pixels
+	filenames = []
+	filenames.append(lines)
+	while tixels<maxacc:
+		accn = arcpy.sa.Con((acc > tixels) & (acc < (tixels+pixels)),1)
+		lines2 = arcpy.RasterToPolyline_conversion(accn)
+		filenames.append(lines2)
+		tixels = tixels + (2*pixels)
+	spots = arcpy.Merge_management(filenames, temp_feature)
+	arcpy.FeatureVerticesToPoints_management(spots,out_feature,"DANGLE")
+	
+	return 
+
+
+
+
+
+
